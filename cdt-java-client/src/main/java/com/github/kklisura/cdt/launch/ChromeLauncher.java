@@ -146,6 +146,7 @@ public class ChromeLauncher implements AutoCloseable {
    */
   public ChromeService launch(Path chromeBinaryPath, ChromeArguments chromeArguments)
       throws ChromeProcessException {
+    chromeArguments.getAdditionalArguments().put("remote-allow-origins", "*");
     int port = launchChromeProcess(chromeBinaryPath, chromeArguments);
     return new ChromeServiceImpl(port);
   }

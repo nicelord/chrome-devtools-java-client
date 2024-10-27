@@ -134,7 +134,7 @@ public class ChromeServiceImpl implements ChromeService {
 
   @Override
   public ChromeTab createTab(String tab) throws ChromeServiceException {
-    return request(ChromeTab.class, "http://%s:%d/%s?%s", host, port, CREATE_TAB, tab);
+    return requestWithMethod("PUT",ChromeTab.class, "http://%s:%d/%s?%s", host, port, CREATE_TAB, tab);
   }
 
   @Override
@@ -157,14 +157,14 @@ public class ChromeServiceImpl implements ChromeService {
 
   @Override
   public synchronized ChromeDevToolsService createDevToolsService(ChromeTab tab)
-      throws ChromeServiceException {
+          throws ChromeServiceException {
     return createDevToolsService(tab, new ChromeDevToolsServiceConfiguration());
   }
 
   @Override
   public synchronized ChromeDevToolsService createDevToolsService(
-      ChromeTab tab, ChromeDevToolsServiceConfiguration chromeDevToolsServiceConfiguration)
-      throws ChromeServiceException {
+          ChromeTab tab, ChromeDevToolsServiceConfiguration chromeDevToolsServiceConfiguration)
+          throws ChromeServiceException {
     try {
       if (isChromeDevToolsServiceCached(tab)) {
         return getCachedChromeDevToolsService(tab);
@@ -173,7 +173,7 @@ public class ChromeServiceImpl implements ChromeService {
       // Connect to a tab via web socket
       String webSocketDebuggerUrl = tab.getWebSocketDebuggerUrl();
       WebSocketService webSocketService =
-          webSocketServiceFactory.createWebSocketService(webSocketDebuggerUrl);
+              webSocketServiceFactory.createWebSocketService(webSocketDebuggerUrl);
 
       // Create invocation handler
       CommandInvocationHandler commandInvocationHandler = new CommandInvocationHandler();
@@ -183,17 +183,17 @@ public class ChromeServiceImpl implements ChromeService {
 
       // Create dev tools service.
       ChromeDevToolsServiceImpl chromeDevToolsService =
-          ProxyUtils.createProxyFromAbstract(
-              ChromeDevToolsServiceImpl.class,
-              new Class[] {WebSocketService.class, ChromeDevToolsServiceConfiguration.class},
-              new Object[] {webSocketService, chromeDevToolsServiceConfiguration},
-              (unused, method, args) ->
-                  commandsCache.computeIfAbsent(
-                      method,
-                      key -> {
-                        Class<?> returnType = method.getReturnType();
-                        return ProxyUtils.createProxy(returnType, commandInvocationHandler);
-                      }));
+              ProxyUtils.createProxyFromAbstract(
+                      ChromeDevToolsServiceImpl.class,
+                      new Class[] {WebSocketService.class, ChromeDevToolsServiceConfiguration.class},
+                      new Object[] {webSocketService, chromeDevToolsServiceConfiguration},
+                      (unused, method, args) ->
+                              commandsCache.computeIfAbsent(
+                                      method,
+                                      key -> {
+                                        Class<?> returnType = method.getReturnType();
+                                        return ProxyUtils.createProxy(returnType, commandInvocationHandler);
+                                      }));
 
       // Register dev tools service with invocation handler.
       commandInvocationHandler.setChromeDevToolsService(chromeDevToolsService);
@@ -206,6 +206,53 @@ public class ChromeServiceImpl implements ChromeService {
       throw new ChromeServiceException("Failed connecting to tab web socket.", ex);
     }
   }
+
+  private static <T> T requestWithMethod(
+          String method, Class<T> responseType, String path, Object... params)
+          throws ChromeServiceException {
+    HttpURLConnection connection = null;
+    InputStream inputStream = null;
+
+    try {
+      URL uri = new URL(String.format(path, params));
+      connection = (HttpURLConnection) uri.openConnection();
+      connection.setRequestMethod(method);
+
+      int responseCode = connection.getResponseCode();
+      if (HttpURLConnection.HTTP_OK == responseCode) {
+        if (Void.class.equals(responseType)) {
+          return null;
+        }
+
+        inputStream = connection.getInputStream();
+        return OBJECT_MAPPER.readerFor(responseType).readValue(inputStream);
+      }
+
+      inputStream = connection.getErrorStream();
+      final String responseBody = inputStreamToString(inputStream);
+
+      String message =
+              MessageFormat.format(
+                      "Server responded with non-200 code: {0} - {1}. {2}",
+                      responseCode, connection.getResponseMessage(), responseBody);
+      throw new ChromeServiceException(message);
+    } catch (IOException ex) {
+      throw new ChromeServiceException("Failed sending HTTP request.", ex);
+    } finally {
+      if (inputStream != null) {
+        try {
+          inputStream.close();
+        } catch (IOException e) {
+          // We can ignore this.
+        }
+      }
+
+      if (connection != null) {
+        connection.disconnect();
+      }
+    }
+  }
+
 
   /**
    * Returns current port number.
@@ -247,7 +294,7 @@ public class ChromeServiceImpl implements ChromeService {
   }
 
   private void cacheChromeDevToolsService(
-      ChromeTab tab, ChromeDevToolsService chromeDevToolsService) {
+          ChromeTab tab, ChromeDevToolsService chromeDevToolsService) {
     chromeDevToolServiceCache.put(tab.getId(), chromeDevToolsService);
   }
 
@@ -262,7 +309,7 @@ public class ChromeServiceImpl implements ChromeService {
    * @throws ChromeServiceException If sending request fails due to any reason.
    */
   private static <T> T request(Class<T> responseType, String path, Object... params)
-      throws ChromeServiceException {
+          throws ChromeServiceException {
     HttpURLConnection connection = null;
     InputStream inputStream = null;
 
@@ -284,9 +331,9 @@ public class ChromeServiceImpl implements ChromeService {
       final String responseBody = inputStreamToString(inputStream);
 
       String message =
-          MessageFormat.format(
-              "Server responded with non-200 code: {0} - {1}. {2}",
-              responseCode, connection.getResponseMessage(), responseBody);
+              MessageFormat.format(
+                      "Server responded with non-200 code: {0} - {1}. {2}",
+                      responseCode, connection.getResponseMessage(), responseBody);
       throw new ChromeServiceException(message);
     } catch (IOException ex) {
       throw new ChromeServiceException("Failed sending HTTP request.", ex);
